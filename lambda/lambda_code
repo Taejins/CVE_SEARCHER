@@ -1,0 +1,146 @@
+# KISA lambda ---
+import requests
+import json
+
+def lambda_handler(event, context):
+    # TODO implement
+    ret = []
+    
+    keyword = event['keyword']
+
+    param = {
+        'pageSize' : '10',
+        'rowSize' : '3',
+        'curPage': '0',
+        "query": '{"bool":{"must":[],"should":[{"regexp":{"products.vendor":".*%s.*"}},{"regexp":{"products.product":".*%s.*"}},{"match_phrase":{"CVEID":"%s"}}],"minimum_should_match":1}}'%(keyword,keyword,keyword),
+        'sort': '[{"lastModifiedDate":"desc"}]',
+        'tail_class_name': 'page-align',
+        'pgCnt2': '46'
+    }
+    req = requests.post('https://knvd.krcert.or.kr/data/elkData.do', params=param, verify=False)
+    a = json.loads(req.text)
+    
+    for i in a['result']['hits']['hits']:
+        dic = {}
+        dic['code'] = i['_source']['CVEID']
+        dic['description'] = i['_source']['description_kr']
+        dic['cvss3'] = f"[{i['_source']['cvss3']['baseScore']}] {i['_source']['cvss3']['vectorString']}"
+        ret.append(dic)
+    
+    return {
+        'statusCode': 200,
+        'body': json.dumps(ret)
+    }
+
+# exploit-db lambda ---
+
+import json
+import requests
+
+def lambda_handler(event, context):
+    ret = []
+    
+    keyword = event['keyword']
+
+    param = {
+        'q': keyword,
+        'draw':1
+    }
+    header = {
+        'accept':'application/json, text/javascript, */*; q=0.01',
+        # 'sec-fetch-dest':'empty',
+        # 'sec-fetch-mode':'cors',
+        'x-requested-with':'XMLHttpRequest'
+    }
+    req = requests.get(
+        'https://www.exploit-db.com/search',
+        params=param,
+        headers=header
+        )
+    
+    data = json.loads(req.text)
+    for i in data['data']:
+        dic = {}
+        dic['title'] = i['description'][1]
+        dic['url'] = f"https://www.exploit-db.com/exploits/{i['id']}"
+        dic['code'] = [ f"{j['code_type']}-{j['code']}" for j in i['code']]
+        ret.append(dic)
+    
+    # TODO implement
+    return {
+        'statusCode': 200,
+        'body': json.dumps(ret)
+    }
+
+# CVE.Mitre lambda ---
+
+import json
+import requests
+from bs4 import BeautifulSoup as bs
+
+def lambda_handler(event, context):
+    ret = []
+    
+    keyword = event['keyword']
+
+    param = {
+        'keyword': keyword
+    }
+    
+    req = requests.get('https://cve.mitre.org/cgi-bin/cvekey.cgi', params=param)
+    
+    page = bs(req.text, "html.parser")
+    
+    for i in page.select('div#TableWithRules > table > tr'):
+        dic = {}
+        dic['code'] = i.select('td')[0].text
+        dic['url'] = "https://cve.mitre.org"+i.select('td > a')[0].attrs['href']
+        dic['description'] = i.select('td')[1].text
+        ret.append(dic)
+    
+    return {
+        'statusCode': 200,
+        'body': json.dumps(ret)
+    }
+
+# google lambda ---
+
+import json
+import requests
+from bs4 import BeautifulSoup as bs
+
+def lambda_handler(event, context):
+    # TODO implement
+    ret = []
+    
+    keyword = event['keyword']
+
+    param = {
+        'q': keyword
+    }
+    
+    req = requests.get('https://www.google.com/search', params = param)
+    page = bs(req.text,'html.parser')
+    
+    main_route = page.select('div#main>div:nth-child(n+5)>div')
+    
+    for i in main_route:
+        dic = {}
+    
+        title = i.select_one('div:first-child > a > h3 > div')
+        site = i.select_one('div:first-child > a > h3 + div')
+        url = i.select_one('div:first-child > a')
+        content = i.select_one('div:nth-child(2) > div > div > div > div:first-child > div')
+    
+        if all([title,site,content]):
+            dic['title'] = title.text
+            dic['site'] = site.text
+            dic['url'] = "https://www.google.com/"+url.attrs['href']
+            dic['content'] = content.text
+            ret.append(dic)
+    
+    
+    return {
+        'statusCode': 200,
+        'body': json.dumps(ret)
+    }
